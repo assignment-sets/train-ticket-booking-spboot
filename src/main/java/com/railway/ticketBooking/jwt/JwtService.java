@@ -54,8 +54,9 @@ public class JwtService {
                 .getPayload();
     }
 
-    public String extractUserId(String token) {
-        return extractClaims(token).getSubject();
+    public Long extractUserId(String token) {
+        String subject = extractClaims(token).getSubject();
+        return subject != null ? Long.valueOf(subject) : null;
     }
 
     public String extractEmail(String token) {

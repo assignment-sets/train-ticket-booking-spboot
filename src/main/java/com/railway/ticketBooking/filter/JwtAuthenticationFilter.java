@@ -12,7 +12,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.railway.ticketBooking.entity.Role;
 import com.railway.ticketBooking.jwt.JwtService;
+import com.railway.ticketBooking.security.UserPrincipal;
 
 import java.io.IOException;
 import java.util.List;
@@ -38,14 +41,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String jwt = authHeader.substring(7);
 
         if (SecurityContextHolder.getContext().getAuthentication() == null && jwtService.isTokenValid(jwt)) {
-            String email = jwtService.extractEmail(jwt);
-            String roleName = jwtService.extractRole(jwt);
+            Long id = jwtService.extractUserId(jwt);
 
-            // Build the authority matching the "ROLE_" convention for @PreAuthorize checks
-            SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + roleName);
+            String email = jwtService.extractEmail(jwt);
+
+            Role role = Role.valueOf(jwtService.extractRole(jwt));
+
+            UserPrincipal principal = new UserPrincipal(
+                    id,
+                    email,
+                    role);
+
+            SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role.name());
 
             UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                    email, // Setting email as the primary identification principal string
+                    principal,
                     null,
                     List.of(authority));
 
