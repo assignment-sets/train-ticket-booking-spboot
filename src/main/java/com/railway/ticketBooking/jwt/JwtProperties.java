@@ -1,0 +1,23 @@
+package com.railway.ticketBooking.jwt;
+
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+@Getter
+@Setter
+@Component
+@ConfigurationProperties(prefix = "jwt")
+public class JwtProperties {
+
+    /**
+     * 64+ byte hex/string secret from application.yaml
+     */
+    private String secret;
+
+    /**
+     * milliseconds
+     */
+    private long expiration;
+}
