@@ -12,32 +12,64 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                "timestamp", LocalDateTime.now().toString(),
-                "status", HttpStatus.FORBIDDEN.value(),
-                "error", "Forbidden",
-                "message", "Access Denied: You do not have the required role (ADMIN) for this resource."));
-    }
+        @ExceptionHandler(AccessDeniedException.class)
+        public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                                "timestamp", LocalDateTime.now().toString(),
+                                "status", HttpStatus.FORBIDDEN.value(),
+                                "error", "Forbidden",
+                                "message",
+                                "Access Denied: You do not have the required role (ADMIN) for this resource."));
+        }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "timestamp", LocalDateTime.now().toString(),
-                "status", HttpStatus.BAD_REQUEST.value(),
-                "error", "Bad Request",
-                "message", ex.getMessage()));
-    }
+        @ExceptionHandler(IllegalArgumentException.class)
+        public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                                "timestamp", LocalDateTime.now().toString(),
+                                "status", HttpStatus.BAD_REQUEST.value(),
+                                "error", "Bad Request",
+                                "message", ex.getMessage()));
+        }
 
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
+        @ExceptionHandler(ResourceNotFoundException.class)
+        public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
 
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of(
-                        "timestamp", LocalDateTime.now().toString(),
-                        "status", HttpStatus.NOT_FOUND.value(),
-                        "error", "Not Found",
-                        "message", ex.getMessage()));
-    }
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                                .body(Map.of(
+                                                "timestamp", LocalDateTime.now().toString(),
+                                                "status", HttpStatus.NOT_FOUND.value(),
+                                                "error", "Not Found",
+                                                "message", ex.getMessage()));
+        }
+
+        @ExceptionHandler(SeatAlreadyBookedException.class)
+        public ResponseEntity<Map<String, Object>> handleSeatAlreadyBooked(
+                        SeatAlreadyBookedException ex) {
+
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                                .body(Map.of(
+                                                "timestamp", LocalDateTime.now().toString(),
+                                                "status", HttpStatus.CONFLICT.value(),
+                                                "error", "Conflict",
+                                                "message", ex.getMessage()));
+        }
+
+        @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
+        public ResponseEntity<Map<String, Object>> handleValidationException(
+                        org.springframework.web.bind.MethodArgumentNotValidException ex) {
+
+                String message = ex.getBindingResult()
+                                .getFieldErrors()
+                                .stream()
+                                .findFirst()
+                                .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                                .orElse("Validation failed.");
+
+                return ResponseEntity.badRequest()
+                                .body(Map.of(
+                                                "timestamp", LocalDateTime.now().toString(),
+                                                "status", HttpStatus.BAD_REQUEST.value(),
+                                                "error", "Bad Request",
+                                                "message", message));
+        }
 }
