@@ -86,4 +86,11 @@ public class Ticket {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TicketStatus status;
+
+    // ------------------------------------------------------------------------
+    // Booking Order Linking
+    // ------------------------------------------------------------------------
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "booking_order_id")
+    private BookingOrder bookingOrder;
 }

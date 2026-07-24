@@ -1,5 +1,6 @@
 package com.railway.ticketBooking.service;
 
+import com.railway.ticketBooking.config.PricingProperties;
 import com.railway.ticketBooking.dto.*;
 import com.railway.ticketBooking.entity.*;
 import com.railway.ticketBooking.exception.ResourceNotFoundException;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +26,8 @@ public class BookingService {
         private final SeatRepository seatRepository;
         private final TicketRepository ticketRepository;
         private final UserRepository userRepository;
+        private final PricingProperties pricingProperties;
+        private final BookingOrderRepository bookingOrderRepository;
 
         // ==========================================================
         // SEARCH TRAINS
@@ -89,37 +93,67 @@ public class BookingService {
         // ==========================================================
 
         @Transactional
-        public List<TicketResponse> bookTickets(UserPrincipal principal, BookTicketRequest request) {
+        public BookingOrderResponse bookTickets(UserPrincipal principal, BookTicketRequest request) {
+                // 0. IDEMPOTENCY CHECK: Intercept duplicate client retries early
+                Optional<BookingOrder> existingOrder = bookingOrderRepository
+                                .findByIdempotencyKey(request.idempotencyKey());
+                if (existingOrder.isPresent()) {
+                        return mapToBookingOrderResponse(existingOrder.get());
+                }
+
+                // 1. Fetch user and the specific journey context
                 User user = userRepository.findById(principal.id())
                                 .orElseThrow(() -> new ResourceNotFoundException("User not found."));
-
                 Journey journey = findJourney(request.journeyId());
+
+                // 2. Resolve stations and validate simple direction constraints
                 RouteStop source = findRouteStop(journey.getRoute().getId(), request.sourceStationId());
                 RouteStop destination = findRouteStop(journey.getRoute().getId(), request.destinationStationId());
-
                 validateTravelDirection(source, destination);
 
-                List<TicketResponse> responses = new ArrayList<>();
+                // 3. BULK FETCH: Get all requested seats in one database hit
+                List<Seat> requestedSeats = seatRepository.findAllById(request.seatIds());
+                if (requestedSeats.size() != request.seatIds().size()) {
+                        throw new ResourceNotFoundException("One or more requested seats could not be found.");
+                }
 
-                for (Long seatId : request.seatIds()) {
-                        Seat seat = seatRepository.findById(seatId)
-                                        .orElseThrow(() -> new ResourceNotFoundException("Seat not found."));
-
-                        List<Ticket> existingTickets = ticketRepository.findByJourney_IdAndSeat_Id(journey.getId(),
-                                        seatId);
-
-                        for (Ticket ticket : existingTickets) {
-                                if (detectOverlap(
-                                                source.getStopOrder(),
-                                                destination.getStopOrder(),
-                                                ticket.getSourceStopOrder(),
-                                                ticket.getDestinationStopOrder())) {
-
-                                        throw new SeatAlreadyBookedException(
-                                                        "Seat " + seat.getCoachNumber() + "-" + seat.getSeatNumber()
-                                                                        + " is already booked.");
-                                }
+                // 4. DATA INTEGRITY CHECK: Ensure all requested seats belong to this journey's
+                // train
+                Long expectedTrainId = journey.getTrain().getId();
+                for (Seat seat : requestedSeats) {
+                        if (!seat.getTrain().getId().equals(expectedTrainId)) {
+                                throw new IllegalArgumentException(String.format(
+                                                "Seat %d does not belong to the train assigned to journey %d.",
+                                                seat.getId(), journey.getId()));
                         }
+                }
+
+                // 5. BULK FETCH ACTIVE TICKETS: Get all current bookings for these specific
+                // seats
+                List<Ticket> activeTickets = ticketRepository.findExistingActiveTickets(journey.getId(),
+                                request.seatIds());
+
+                int reqFrom = source.getStopOrder();
+                int reqTo = destination.getStopOrder();
+
+                List<Ticket> ticketsToSave = new ArrayList<>();
+                BigDecimal totalAmount = BigDecimal.ZERO;
+
+                // 6. PROCESS LOOP: Segment validation and preparation
+                for (Seat seat : requestedSeats) {
+                        boolean hasOverlap = activeTickets.stream()
+                                        .filter(t -> t.getSeat().getId().equals(seat.getId()))
+                                        .anyMatch(t -> detectOverlap(reqFrom, reqTo, t.getSourceStopOrder(),
+                                                        t.getDestinationStopOrder()));
+
+                        if (hasOverlap) {
+                                throw new SeatAlreadyBookedException(String.format(
+                                                "Seat %d-%d is already booked for an overlapping segment of this journey.",
+                                                seat.getCoachNumber(), seat.getSeatNumber()));
+                        }
+
+                        BigDecimal ticketFare = calculateFare(seat);
+                        totalAmount = totalAmount.add(ticketFare);
 
                         Ticket newTicket = Ticket.builder()
                                         .user(user)
@@ -127,26 +161,61 @@ public class BookingService {
                                         .seat(seat)
                                         .sourceRouteStop(source)
                                         .destinationRouteStop(destination)
-                                        .sourceStopOrder(source.getStopOrder())
-                                        .destinationStopOrder(destination.getStopOrder())
-                                        .fare(BigDecimal.valueOf(500))
-                                        .status(TicketStatus.BOOKED)
+                                        .sourceStopOrder(reqFrom)
+                                        .destinationStopOrder(reqTo)
+                                        .fare(ticketFare)
+                                        .status(TicketStatus.PENDING_PAYMENT)
                                         .build();
 
-                        newTicket = ticketRepository.save(newTicket);
-
-                        responses.add(new TicketResponse(
-                                        newTicket.getId(),
-                                        journey.getId(),
-                                        journey.getTrain().getName(),
-                                        seat.getCoachNumber() + "-" + seat.getSeatNumber(),
-                                        source.getStation().getName(),
-                                        destination.getStation().getName(),
-                                        newTicket.getStatus(),
-                                        newTicket.getFare()));
+                        ticketsToSave.add(newTicket);
                 }
 
-                return responses;
+                // 7. ENVELOPE ASSEMBLY: Initialize parent BookingOrder and bind bi-directional
+                // dependencies
+                BookingOrder bookingOrder = BookingOrder.builder()
+                                .user(user)
+                                .totalAmount(totalAmount)
+                                .status(OrderStatus.PENDING)
+                                .idempotencyKey(request.idempotencyKey())
+                                .tickets(ticketsToSave)
+                                .build();
+
+                // Link individual tickets to the parent order container
+                for (Ticket ticket : ticketsToSave) {
+                        ticket.setBookingOrder(bookingOrder);
+                }
+
+                // CascadeType.ALL will automatically save all child tickets along with the
+                // master order record
+                BookingOrder savedOrder = bookingOrderRepository.save(bookingOrder);
+
+                return mapToBookingOrderResponse(savedOrder);
+        }
+
+        /**
+         * Clean helper mapping routine to safely unpack the stored domain tree into a
+         * flat structural DTO.
+         */
+        private BookingOrderResponse mapToBookingOrderResponse(BookingOrder order) {
+                List<TicketResponse> ticketResponses = order.getTickets().stream()
+                                .map(t -> new TicketResponse(
+                                                t.getId(),
+                                                t.getJourney().getId(),
+                                                t.getJourney().getTrain().getName(),
+                                                t.getSeat().getCoachNumber() + "-" + t.getSeat().getSeatNumber(),
+                                                t.getSourceRouteStop().getStation().getName(),
+                                                t.getDestinationRouteStop().getStation().getName(),
+                                                t.getStatus(),
+                                                t.getFare()))
+                                .toList();
+
+                return new BookingOrderResponse(
+                                order.getId(),
+                                order.getIdempotencyKey(),
+                                order.getTotalAmount(),
+                                order.getStatus().name(),
+                                order.getCreatedAt(), // Pulled securely after saving or database initialization
+                                ticketResponses);
         }
 
         // ==========================================================

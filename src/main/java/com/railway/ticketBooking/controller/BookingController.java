@@ -2,6 +2,7 @@ package com.railway.ticketBooking.controller;
 
 import com.railway.ticketBooking.dto.AvailableSeatResponse;
 import com.railway.ticketBooking.dto.BookTicketRequest;
+import com.railway.ticketBooking.dto.BookingOrderResponse;
 import com.railway.ticketBooking.dto.SearchTrainRequest;
 import com.railway.ticketBooking.dto.TicketResponse;
 import com.railway.ticketBooking.dto.TrainSearchResponse;
@@ -23,55 +24,50 @@ import java.util.List;
 @RequiredArgsConstructor
 public class BookingController {
 
-    private final BookingService bookingService;
+        private final BookingService bookingService;
 
-    // ==========================================================
-    // SEARCH TRAINS
-    // ==========================================================
+        // ==========================================================
+        // SEARCH TRAINS
+        // ==========================================================
 
-    @PostMapping("/search")
-    public ResponseEntity<List<TrainSearchResponse>> searchTrains(
-            @Valid @RequestBody SearchTrainRequest request) {
+        @PostMapping("/search")
+        public ResponseEntity<List<TrainSearchResponse>> searchTrains(
+                        @Valid @RequestBody SearchTrainRequest request) {
 
-        return ResponseEntity.ok(
-                bookingService.searchTrains(request));
-    }
+                return ResponseEntity.ok(
+                                bookingService.searchTrains(request));
+        }
 
-    // ==========================================================
-    // AVAILABLE SEATS
-    // ==========================================================
+        // ==========================================================
+        // AVAILABLE SEATS
+        // ==========================================================
 
-    @GetMapping("/{journeyId}/available-seats")
-    public ResponseEntity<List<AvailableSeatResponse>> getAvailableSeats(
+        @GetMapping("/{journeyId}/available-seats")
+        public ResponseEntity<List<AvailableSeatResponse>> getAvailableSeats(
 
-            @PathVariable Long journeyId,
+                        @PathVariable Long journeyId,
 
-            @RequestParam Long sourceStationId,
+                        @RequestParam Long sourceStationId,
 
-            @RequestParam Long destinationStationId) {
+                        @RequestParam Long destinationStationId) {
 
-        return ResponseEntity.ok(
-                bookingService.getAvailableSeats(
-                        journeyId,
-                        sourceStationId,
-                        destinationStationId));
-    }
+                return ResponseEntity.ok(
+                                bookingService.getAvailableSeats(
+                                                journeyId,
+                                                sourceStationId,
+                                                destinationStationId));
+        }
 
-    // ==========================================================
-    // BOOK TICKETS
-    // ==========================================================
+        // ==========================================================
+        // BOOK TICKETS
+        // ==========================================================
 
-    @PostMapping
-    public ResponseEntity<List<TicketResponse>> bookTickets(
+        @PostMapping
+        public ResponseEntity<BookingOrderResponse> bookTickets(
+                        @AuthenticationPrincipal UserPrincipal principal,
+                        @Valid @RequestBody BookTicketRequest request) {
 
-            @AuthenticationPrincipal UserPrincipal principal,
-
-            @Valid @RequestBody BookTicketRequest request) {
-
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(
-                        bookingService.bookTickets(
-                                principal,
-                                request));
-    }
+                return ResponseEntity.status(HttpStatus.CREATED)
+                                .body(bookingService.bookTickets(principal, request));
+        }
 }

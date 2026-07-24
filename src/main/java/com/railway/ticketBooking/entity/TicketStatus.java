@@ -1,6 +1,7 @@
 package com.railway.ticketBooking.entity;
 
 public enum TicketStatus {
-    BOOKED,
+    PENDING_PAYMENT, // Locked during checkout
+    CONFIRMED, // Paid and fully valid for travel
     CANCELLED
 }
