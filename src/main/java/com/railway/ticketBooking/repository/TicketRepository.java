@@ -30,4 +30,12 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
                         @Param("seatIds") List<Long> seatIds);
 
         List<Ticket> findByStatusAndBookingTimeBefore(TicketStatus status, LocalDateTime time);
+
+        @Query("""
+                         SELECT t FROM Ticket t
+                         WHERE t.journey.id = :journeyId
+                         AND (t.status = com.railway.ticketBooking.entity.TicketStatus.PENDING_PAYMENT
+                              OR t.status = com.railway.ticketBooking.entity.TicketStatus.CONFIRMED)
+                        """)
+        List<Ticket> findActiveTicketsByJourneyId(@Param("journeyId") Long journeyId);
 }

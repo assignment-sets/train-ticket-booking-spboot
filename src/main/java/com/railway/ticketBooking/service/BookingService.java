@@ -9,6 +9,8 @@ import com.railway.ticketBooking.repository.*;
 import com.railway.ticketBooking.security.UserPrincipal;
 
 import lombok.RequiredArgsConstructor;
+
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +18,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -56,26 +59,42 @@ public class BookingService {
 
                 validateTravelDirection(source, destination);
 
-                List<AvailableSeatResponse> availableSeats = new ArrayList<>();
+                // 1. BULK FETCH: All seats belonging to this train
                 List<Seat> seats = seatRepository.findByTrain_Id(journey.getTrain().getId());
 
+                // 2. BULK FETCH: All active, non-cancelled tickets for this journey in ONE
+                // database hit
+                List<Ticket> activeTickets = ticketRepository.findActiveTicketsByJourneyId(journeyId);
+
+                // 3. IN-MEMORY MAPPING: Group tickets by seat ID for O(1) lookups during the
+                // loop
+                Map<Long, List<Ticket>> ticketsBySeatId = activeTickets.stream()
+                                .collect(Collectors.groupingBy(ticket -> ticket.getSeat().getId()));
+
+                List<AvailableSeatResponse> availableSeats = new ArrayList<>();
+                int reqFrom = source.getStopOrder();
+                int reqTo = destination.getStopOrder();
+
+                // 4. PROCESS LOOP: Check segments entirely in memory
                 for (Seat seat : seats) {
-                        List<Ticket> existingTickets = ticketRepository.findByJourney_IdAndSeat_Id(journeyId,
-                                        seat.getId());
+                        // Get only the active tickets that belong to this specific seat (default to
+                        // empty list if none)
+                        List<Ticket> seatTickets = ticketsBySeatId.getOrDefault(seat.getId(), List.of());
                         boolean occupied = false;
 
-                        for (Ticket ticket : existingTickets) {
+                        for (Ticket ticket : seatTickets) {
                                 if (detectOverlap(
-                                                source.getStopOrder(),
-                                                destination.getStopOrder(),
+                                                reqFrom,
+                                                reqTo,
                                                 ticket.getSourceStopOrder(),
                                                 ticket.getDestinationStopOrder())) {
 
                                         occupied = true;
-                                        break;
+                                        break; // Segment is blocked, no need to check further tickets for this seat
                                 }
                         }
 
+                        // If no active ticket overlaps with our requested stations, the seat is open!
                         if (!occupied) {
                                 availableSeats.add(new AvailableSeatResponse(
                                                 seat.getId(),
