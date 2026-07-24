@@ -28,3 +28,9 @@ jwt:
   secret: 8dc33af4c987cefe7258d5d5a0f3a91b4ab6a37c94bdb3f26a0dbe8d34d72a89
 
   expiration: 86400000
+
+pricing:
+  multipliers:
+    WINDOW: 1.40
+    AISLE: 1.20
+    MIDDLE: 1.00

@@ -1,5 +1,7 @@
 package com.railway.ticketBooking.entity;
 
+import java.math.BigDecimal;
+
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -27,4 +29,7 @@ public class Train {
 
     @Column(name = "seats_per_coach", nullable = false)
     private Integer seatsPerCoach;
+
+    @Column(name = "base_seat_price", nullable = false, precision = 10, scale = 2)
+    private BigDecimal baseSeatPrice;
 }

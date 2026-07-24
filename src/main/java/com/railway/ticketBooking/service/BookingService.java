@@ -176,4 +176,13 @@ public class BookingService {
         private boolean detectOverlap(int requestedFrom, int requestedTo, int bookedFrom, int bookedTo) {
                 return requestedFrom < bookedTo && bookedFrom < requestedTo;
         }
+
+        private BigDecimal calculateFare(Seat seat) {
+                BigDecimal multiplier = pricingProperties.getMultipliers().get(seat.getSeatType());
+                if (multiplier == null) {
+                        throw new IllegalStateException(
+                                        "Missing pricing multiplier for seat type: " + seat.getSeatType());
+                }
+                return seat.getTrain().getBaseSeatPrice().multiply(multiplier);
+        }
 }

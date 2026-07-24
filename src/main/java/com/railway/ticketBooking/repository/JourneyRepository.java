@@ -19,7 +19,8 @@ public interface JourneyRepository extends JpaRepository<Journey, Long> {
                 t.trainNumber,
                 t.name,
                 source.departureTime,
-                destination.arrivalTime
+                destination.arrivalTime,
+                t.baseSeatPrice
             )
             FROM Journey j
             JOIN j.train t
