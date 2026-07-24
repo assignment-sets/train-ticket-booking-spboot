@@ -72,4 +72,23 @@ public class GlobalExceptionHandler {
                                                 "error", "Bad Request",
                                                 "message", message));
         }
+
+        @ExceptionHandler(PaymentException.class)
+        public ResponseEntity<Map<String, Object>> handlePaymentException(PaymentException ex) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                                "timestamp", LocalDateTime.now().toString(),
+                                "status", HttpStatus.BAD_REQUEST.value(),
+                                "error", "Payment Error",
+                                "message", ex.getMessage()));
+        }
+
+        @ExceptionHandler(com.stripe.exception.StripeException.class)
+        public ResponseEntity<Map<String, Object>> handleStripeException(com.stripe.exception.StripeException ex) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                                "timestamp", LocalDateTime.now().toString(),
+                                "status", HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                                "error", "Payment Gateway Error",
+                                "message", "An error occurred while communicating with the payment processor: "
+                                                + ex.getMessage()));
+        }
 }

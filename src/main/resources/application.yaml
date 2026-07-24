@@ -11,7 +11,7 @@ spring:
     hibernate:
       ddl-auto: validate
 
-    show-sql: true
+    show-sql: false
 
     properties:
       hibernate:
@@ -34,3 +34,18 @@ pricing:
     WINDOW: 1.40
     AISLE: 1.20
     MIDDLE: 1.00
+
+logging:
+  level:
+    org:
+      hibernate:
+        SQL: ERROR
+        orm:
+          jdbc:
+            bind: ERROR
+
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+  success-url: http://localhost:8080/booking/success?bookingId={CHECKOUT_SESSION_ID}
+  cancel-url: http://localhost:8080/booking/cancel

@@ -31,6 +31,10 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        // Allow the Stripe background CLI to push events to our backend
+                        .requestMatchers("/api/v1/payments/webhook").permitAll()
+                        // Allow your casual browser window to view the mock HTML screens without a JWT
+                        .requestMatchers("/booking/success", "/booking/cancel").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
