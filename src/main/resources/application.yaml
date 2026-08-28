@@ -3,9 +3,9 @@ spring:
     name: ticket-booking
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/railway_db
-    username: postgres
-    password: postgres
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/railway_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
 
   jpa:
     hibernate:
@@ -22,12 +22,11 @@ spring:
     locations: classpath:db/migration
 
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 jwt:
-  secret: 8dc33af4c987cefe7258d5d5a0f3a91b4ab6a37c94bdb3f26a0dbe8d34d72a89
-
-  expiration: 86400000
+  secret: ${JWT_SECRET:8dc33af4c987cefe7258d5d5a0f3a91b4ab6a37c94bdb3f26a0dbe8d34d72a89}
+  expiration: ${JWT_EXPIRATION:86400000}
 
 pricing:
   multipliers:
@@ -47,5 +46,5 @@ logging:
 stripe:
   secret-key: ${STRIPE_SECRET_KEY}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET}
-  success-url: http://localhost:8080/booking/success?bookingId={CHECKOUT_SESSION_ID}
-  cancel-url: http://localhost:8080/booking/cancel
+  success-url: http://localhost:5173/payment/success?orderId={ORDER_ID}&sessionId={CHECKOUT_SESSION_ID}
+  cancel-url: http://localhost:5173/payment/failure?orderId={ORDER_ID}
