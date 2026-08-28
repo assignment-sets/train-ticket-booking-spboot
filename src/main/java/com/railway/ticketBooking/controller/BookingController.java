@@ -39,23 +39,26 @@ public class BookingController {
         }
 
         // ==========================================================
-        // AVAILABLE SEATS
+        // AVAILABLE SEATS & COACH LAYOUT
         // ==========================================================
 
         @GetMapping("/{journeyId}/available-seats")
-        public ResponseEntity<List<AvailableSeatResponse>> getAvailableSeats(
+        public ResponseEntity<com.railway.ticketBooking.dto.SeatLayoutResponse> getAvailableSeats(
 
                         @PathVariable Long journeyId,
 
                         @RequestParam Long sourceStationId,
 
-                        @RequestParam Long destinationStationId) {
+                        @RequestParam Long destinationStationId,
+
+                        @RequestParam(required = false) Integer coachNumber) {
 
                 return ResponseEntity.ok(
                                 bookingService.getAvailableSeats(
                                                 journeyId,
                                                 sourceStationId,
-                                                destinationStationId));
+                                                destinationStationId,
+                                                coachNumber));
         }
 
         // ==========================================================
@@ -69,5 +72,28 @@ public class BookingController {
 
                 return ResponseEntity.status(HttpStatus.CREATED)
                                 .body(bookingService.bookTickets(principal, request));
+        }
+
+        // ==========================================================
+        // GET MY BOOKING ORDERS (ORDER HISTORY)
+        // ==========================================================
+
+        @GetMapping("/my-orders")
+        public ResponseEntity<List<BookingOrderResponse>> getMyOrders(
+                        @AuthenticationPrincipal UserPrincipal principal) {
+
+                return ResponseEntity.ok(bookingService.getMyOrders(principal));
+        }
+
+        // ==========================================================
+        // GET SINGLE BOOKING ORDER BY ID (RECEIPT / DETAILS)
+        // ==========================================================
+
+        @GetMapping("/orders/{orderId}")
+        public ResponseEntity<BookingOrderResponse> getOrderById(
+                        @AuthenticationPrincipal UserPrincipal principal,
+                        @PathVariable Long orderId) {
+
+                return ResponseEntity.ok(bookingService.getOrderById(principal, orderId));
         }
 }

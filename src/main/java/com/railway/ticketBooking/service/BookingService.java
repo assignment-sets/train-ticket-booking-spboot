@@ -31,6 +31,7 @@ public class BookingService {
         private final UserRepository userRepository;
         private final PricingProperties pricingProperties;
         private final BookingOrderRepository bookingOrderRepository;
+        private final PaymentService paymentService;
 
         // ==========================================================
         // SEARCH TRAINS
@@ -48,10 +49,11 @@ public class BookingService {
         // AVAILABLE SEATS
         // ==========================================================
 
-        public List<AvailableSeatResponse> getAvailableSeats(
+        public SeatLayoutResponse getAvailableSeats(
                         Long journeyId,
                         Long sourceStationId,
-                        Long destinationStationId) {
+                        Long destinationStationId,
+                        Integer coachNumber) {
 
                 Journey journey = findJourney(journeyId);
                 RouteStop source = findRouteStop(journey.getRoute().getId(), sourceStationId);
@@ -59,26 +61,28 @@ public class BookingService {
 
                 validateTravelDirection(source, destination);
 
-                // 1. BULK FETCH: All seats belonging to this train
-                List<Seat> seats = seatRepository.findByTrain_Id(journey.getTrain().getId());
+                Train train = journey.getTrain();
 
-                // 2. BULK FETCH: All active, non-cancelled tickets for this journey in ONE
-                // database hit
+                // 1. BULK FETCH: All seats ordered by coach and seat sequence (optionally filtered by coach)
+                List<Seat> seats = (coachNumber != null)
+                                ? seatRepository.findByTrain_IdAndCoachNumberOrderBySeatNumberAsc(train.getId(), coachNumber)
+                                : seatRepository.findByTrain_IdOrderByCoachNumberAscSeatNumberAsc(train.getId());
+
+                // 2. BULK FETCH: All active, non-cancelled tickets for this journey in ONE database hit
                 List<Ticket> activeTickets = ticketRepository.findActiveTicketsByJourneyId(journeyId);
 
-                // 3. IN-MEMORY MAPPING: Group tickets by seat ID for O(1) lookups during the
-                // loop
+                // 3. IN-MEMORY MAPPING: Group tickets by seat ID for O(1) lookups during the loop
                 Map<Long, List<Ticket>> ticketsBySeatId = activeTickets.stream()
                                 .collect(Collectors.groupingBy(ticket -> ticket.getSeat().getId()));
 
-                List<AvailableSeatResponse> availableSeats = new ArrayList<>();
+                List<AvailableSeatResponse> seatResponses = new ArrayList<>();
                 int reqFrom = source.getStopOrder();
                 int reqTo = destination.getStopOrder();
+                int availableCount = 0;
+                int bookedCount = 0;
 
-                // 4. PROCESS LOOP: Check segments entirely in memory
+                // 4. PROCESS LOOP: Check segments and evaluate status for EVERY seat
                 for (Seat seat : seats) {
-                        // Get only the active tickets that belong to this specific seat (default to
-                        // empty list if none)
                         List<Ticket> seatTickets = ticketsBySeatId.getOrDefault(seat.getId(), List.of());
                         boolean occupied = false;
 
@@ -94,17 +98,36 @@ public class BookingService {
                                 }
                         }
 
-                        // If no active ticket overlaps with our requested stations, the seat is open!
-                        if (!occupied) {
-                                availableSeats.add(new AvailableSeatResponse(
-                                                seat.getId(),
-                                                seat.getCoachNumber(),
-                                                seat.getSeatNumber(),
-                                                seat.getSeatType()));
+                        SeatStatus status;
+                        if (occupied) {
+                                status = SeatStatus.BOOKED;
+                                bookedCount++;
+                        } else {
+                                status = SeatStatus.AVAILABLE;
+                                availableCount++;
                         }
+
+                        BigDecimal fare = calculateFare(seat);
+
+                        seatResponses.add(new AvailableSeatResponse(
+                                        seat.getId(),
+                                        seat.getCoachNumber(),
+                                        seat.getSeatNumber(),
+                                        seat.getSeatType(),
+                                        status,
+                                        fare));
                 }
 
-                return availableSeats;
+                return new SeatLayoutResponse(
+                                journey.getId(),
+                                train.getId(),
+                                train.getName(),
+                                train.getTotalCoaches(),
+                                train.getSeatsPerCoach(),
+                                coachNumber,
+                                availableCount,
+                                bookedCount,
+                                seatResponses);
         }
 
         // ==========================================================
@@ -117,12 +140,22 @@ public class BookingService {
                 Optional<BookingOrder> existingOrder = bookingOrderRepository
                                 .findByIdempotencyKey(request.idempotencyKey());
                 if (existingOrder.isPresent()) {
-                        return mapToBookingOrderResponse(existingOrder.get());
+                        BookingOrder order = existingOrder.get();
+                        String existingCheckoutUrl = order.getStatus() == OrderStatus.PENDING
+                                        ? paymentService.createCheckoutSession(order)
+                                        : null;
+                        return mapToBookingOrderResponse(order, existingCheckoutUrl);
                 }
 
                 // 1. Fetch user and the specific journey context
                 User user = userRepository.findById(principal.id())
                                 .orElseThrow(() -> new ResourceNotFoundException("User not found."));
+
+                if (!user.isActive()) {
+                        throw new com.railway.ticketBooking.exception.AccountDeactivatedException(
+                                        "Your account has been deactivated and cannot book tickets.");
+                }
+
                 Journey journey = findJourney(request.journeyId());
 
                 // 2. Resolve stations and validate simple direction constraints
@@ -208,19 +241,47 @@ public class BookingService {
                 // master order record
                 BookingOrder savedOrder = bookingOrderRepository.save(bookingOrder);
 
-                return mapToBookingOrderResponse(savedOrder);
+                // 8. Generate Stripe checkout session for this booking order
+                String checkoutUrl = paymentService.createCheckoutSession(savedOrder);
+
+                return mapToBookingOrderResponse(savedOrder, checkoutUrl);
+        }
+
+        // ==========================================================
+        // GET MY BOOKING ORDERS (ORDER HISTORY)
+        // ==========================================================
+
+        @Transactional(readOnly = true)
+        public List<BookingOrderResponse> getMyOrders(UserPrincipal principal) {
+                List<BookingOrder> orders = bookingOrderRepository.findUserOrdersWithDetails(principal.id());
+                return orders.stream()
+                                .map(order -> mapToBookingOrderResponse(order, null))
+                                .toList();
+        }
+
+        // ==========================================================
+        // GET SINGLE BOOKING ORDER (RECEIPT / DETAILS)
+        // ==========================================================
+
+        @Transactional(readOnly = true)
+        public BookingOrderResponse getOrderById(UserPrincipal principal, Long orderId) {
+                BookingOrder order = bookingOrderRepository.findUserOrderByIdWithDetails(orderId, principal.id())
+                                .orElseThrow(() -> new ResourceNotFoundException("Order not found with ID: " + orderId));
+                return mapToBookingOrderResponse(order, null);
         }
 
         /**
          * Clean helper mapping routine to safely unpack the stored domain tree into a
          * flat structural DTO.
          */
-        private BookingOrderResponse mapToBookingOrderResponse(BookingOrder order) {
+        private BookingOrderResponse mapToBookingOrderResponse(BookingOrder order, String checkoutUrl) {
                 List<TicketResponse> ticketResponses = order.getTickets().stream()
                                 .map(t -> new TicketResponse(
                                                 t.getId(),
                                                 t.getJourney().getId(),
+                                                t.getJourney().getTrain().getTrainNumber(),
                                                 t.getJourney().getTrain().getName(),
+                                                t.getJourney().getJourneyDate(),
                                                 t.getSeat().getCoachNumber() + "-" + t.getSeat().getSeatNumber(),
                                                 t.getSourceRouteStop().getStation().getName(),
                                                 t.getDestinationRouteStop().getStation().getName(),
@@ -233,6 +294,7 @@ public class BookingService {
                                 order.getIdempotencyKey(),
                                 order.getTotalAmount(),
                                 order.getStatus().name(),
+                                checkoutUrl,
                                 order.getCreatedAt(), // Pulled securely after saving or database initialization
                                 ticketResponses);
         }
