@@ -41,12 +41,14 @@ public class UserService {
                 .toList();
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public void deleteUser(Long id) {
 
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User with id " + id + " not found."));
 
-        userRepository.delete(user);
+        user.setActive(false);
+        userRepository.save(user);
     }
 
     private UserResponse toResponse(User user) {
@@ -56,6 +58,7 @@ public class UserService {
                 user.getName(),
                 user.getEmail(),
                 user.getRole(),
+                user.isActive(),
                 user.getCreatedAt());
     }
 }

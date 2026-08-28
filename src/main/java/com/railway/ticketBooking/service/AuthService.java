@@ -40,6 +40,11 @@ public class AuthService {
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid email credentials or password."));
 
+        if (!user.isActive()) {
+            throw new com.railway.ticketBooking.exception.AccountDeactivatedException(
+                    "Your account has been deactivated. Please contact support.");
+        }
+
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             throw new IllegalArgumentException("Invalid email credentials or password.");
         }

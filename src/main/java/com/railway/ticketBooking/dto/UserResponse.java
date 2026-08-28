@@ -11,6 +11,6 @@ public record UserResponse(
         String name,
         String email,
         Role role,
-
+        boolean active,
         @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime createdAt) {
 }
