@@ -59,19 +59,26 @@ public class PaymentService {
             throw new PaymentException("Transaction validation failed: Amount mismatch.");
         }
 
-        // 3. Status Guard: Must be outstanding pending intent
+        return createCheckoutSession(order);
+    }
+
+    public String createCheckoutSession(BookingOrder order) {
+        // 1. Status Guard: Must be outstanding pending intent
         if (order.getStatus() != OrderStatus.PENDING) {
             throw new PaymentException("Order cannot be processed. Current status: " + order.getStatus());
         }
 
-        // 4. Ingest total checkout balance converted to subunit cents
+        // 2. Ingest total checkout balance converted to subunit cents
         long totalAmountInCents = order.getTotalAmount().multiply(BigDecimal.valueOf(100)).longValue();
+
+        String successUrl = stripeProperties.getSuccessUrl().replace("{ORDER_ID}", String.valueOf(order.getId()));
+        String cancelUrl = stripeProperties.getCancelUrl().replace("{ORDER_ID}", String.valueOf(order.getId()));
 
         try {
             SessionCreateParams params = SessionCreateParams.builder()
                     .setMode(SessionCreateParams.Mode.PAYMENT)
-                    .setSuccessUrl(stripeProperties.getSuccessUrl())
-                    .setCancelUrl(stripeProperties.getCancelUrl())
+                    .setSuccessUrl(successUrl)
+                    .setCancelUrl(cancelUrl)
                     .putMetadata("bookingOrderId", String.valueOf(order.getId()))
                     .addLineItem(
                             SessionCreateParams.LineItem.builder()

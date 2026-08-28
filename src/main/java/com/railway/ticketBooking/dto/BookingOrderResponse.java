@@ -9,6 +9,7 @@ public record BookingOrderResponse(
         String idempotencyKey,
         BigDecimal totalAmount,
         String status,
+        String checkoutUrl,
         LocalDateTime createdAt,
         List<TicketResponse> tickets) {
 }
