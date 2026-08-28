@@ -12,6 +12,35 @@ import java.util.List;
 
 public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
+        @Query("""
+                SELECT t FROM Ticket t
+                LEFT JOIN FETCH t.user u
+                LEFT JOIN FETCH t.journey j
+                LEFT JOIN FETCH j.train tr
+                LEFT JOIN FETCH t.seat s
+                LEFT JOIN FETCH t.sourceRouteStop srs
+                LEFT JOIN FETCH srs.station sstat
+                LEFT JOIN FETCH t.destinationRouteStop drs
+                LEFT JOIN FETCH drs.station dstat
+                LEFT JOIN FETCH t.bookingOrder bo
+                WHERE t.id = :ticketId
+                """)
+        java.util.Optional<Ticket> findTicketWithDetailsById(@Param("ticketId") Long ticketId);
+
+        @Query("""
+                SELECT t FROM Ticket t
+                LEFT JOIN FETCH t.journey j
+                LEFT JOIN FETCH j.train tr
+                LEFT JOIN FETCH t.seat s
+                LEFT JOIN FETCH t.sourceRouteStop srs
+                LEFT JOIN FETCH srs.station sstat
+                LEFT JOIN FETCH t.destinationRouteStop drs
+                LEFT JOIN FETCH drs.station dstat
+                WHERE t.user.id = :userId
+                ORDER BY t.bookingTime DESC
+                """)
+        List<Ticket> findUserTicketsWithDetails(@Param("userId") Long userId);
+
         List<Ticket> findByJourney_Id(Long journeyId);
 
         List<Ticket> findByJourney_IdAndSeat_Id(Long journeyId, Long seatId);
